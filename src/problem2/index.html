@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NiceGardenSwap</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="./js/constants.js"></script>
+    <script src="./script.js"></script>
+    <script src="./js/components.js"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/web3/4.7.0/web3.min.js"
+      integrity="sha512-Fb4046VCVYeHkcOot1tILxjEvhotfjmk2Zo54zEJopE4BskdPALUvjzjnOttxbZ/WlvKUOgCHTHy42Z5OxRaHw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="text-white bg-[#358E6A] font-mono">
+    <div id="app">
+      <div
+        class="p-3 gap-2 sm:h-[60px] sm:py-0 bg-[rgba(0,0,0,0.2)] flex flex-wrap sm:flex-nowrap justify-between items-center"
+      >
+        <div class="flex items-center gap-2">
+          <img src="./carrot.svg" class="w-[35px] sm:w-[80px] sm:mt-8" />
+          <span class="font-semibold text-sm hidden sm:block"
+            >NiceGardenSwap</span
+          >
+        </div>
+        <zone-swap-button
+          v-if="!wallet.address"
+          @click="connect()"
+          class="scale-[0.8]"
+        >
+          Connect Wallet
+        </zone-swap-button>
+        <div v-else class="flex items-center gap-2">
+          <img
+            :src="`https://api.dicebear.com/8.x/bottts-neutral/svg?seed=${wallet.address}`"
+            class="w-[35px] border-2 border-[#D9E8E2] rounded-md"
+          />
+          <span class="text-sm">{{processAddressString(wallet.address)}}</span>
+          <button @click="wallet.disconnect()">
+            <i
+              class="fa-solid fa-arrow-right-from-bracket transition duration-500 ease-in-out hover:translate-x-1 hover:text-black"
+            ></i>
+          </button>
+        </div>
+      </div>
+      <div class="p-5"></div>
+      <div class="flex justify-center">
+        <div class="p-3 w-[400px] flex flex-col justify-center gap-2">
+          <token-input
+            :picker-type="MODAL_TYPE.PAY_TOKEN"
+            :tokens="tokens"
+          ></token-input>
+          <button @click="handleSwapInput">
+            <i class="fa-solid fa-arrows-up-down"></i>
+          </button>
+          <token-input
+            :picker-type="MODAL_TYPE.RECEIVE_TOKEN"
+            :tokens="tokens"
+          ></token-input>
+          <span
+            v-if="(tokenService.payToken && tokenService.receiveToken)"
+            class="text-[12px] py-1"
+            >1 <b>{{tokenService.payToken}}</b> = {{tokenService.exchangeRate}}
+            <b>{{tokenService.receiveToken}}</b></span
+          >
+          <zone-swap-button v-if="!wallet.address" @click="connect">
+            Connect wallet
+          </zone-swap-button>
+          <zone-swap-button
+            v-else
+            :disabled="isDisableSwapButton"
+            @click="showSwapTokenModal(true)"
+          >
+            {{computedSwapButtonLabel}}
+          </zone-swap-button>
+        </div>
+      </div>
+      <swap-token-modal
+        :is-show="isOpenSwapTokenModal"
+        :set-show="showSwapTokenModal"
+      ></swap-token-modal>
+    </div>
+  </body>
+  <script>
+    new Vue({
+      el: "#app",
+      data: {
+        message: "Hello Vue!",
+        count: 0,
+        wallet: CryptoWallet,
+        tokens: [],
+        tokenService: TokenService,
+        isOpenSwapTokenModal: false,
+        isDisableSwapButton: false,
+      },
+      methods: {
+        showSwapTokenModal(status) {
+          if (!status) {
+            this.isOpenSwapTokenModal = false;
+          } else {
+            if (this.tokenService.payToken && this.tokenService.receiveToken) {
+              this.isOpenSwapTokenModal = true;
+            }
+          }
+        },
+        handleSwapInput() {
+          this.tokenService.swap();
+          this.tokenService.calculateExchangeRate(() => {});
+        },
+        async connect() {
+          await this.wallet.connect();
+        },
+        async getPrices() {
+          fetch("prices.json")
+            .then((res) => res.json())
+            .then((data) => {
+              const uniqueTokens = this.filterUniqueTokens(data);
+              this.tokens = uniqueTokens;
+              this.tokenService.setTokenData(uniqueTokens);
+              this.tokenService.calculateExchangeRate(() => {});
+            });
+        },
+        filterUniqueTokens(tokens) {
+          return Object.values(
+            tokens.reduce((acc, token) => {
+              if (!acc[token.currency]) {
+                acc[token.currency] = token;
+              } else {
+                if (Math.random() < 0.5) {
+                  acc[token.currency] = token;
+                }
+              }
+              return acc;
+            }, {})
+          );
+        },
+      },
+      computed: {
+        computedSwapButtonLabel() {
+          if (!(this.tokenService.payToken && this.tokenService.receiveToken)) {
+            this.isDisableSwapButton = true;
+            return "Select token";
+          }
+          if (
+            this.tokenService.inputTokenValue == 0 ||
+            this.tokenService.inputTokenValue == null
+          ) {
+            this.isDisableSwapButton = true;
+            return "Enter amount";
+          } else if (
+            this.tokenService.inputTokenValue > this.wallet.currentBalance
+          ) {
+            this.isDisableSwapButton = true;
+            return `Insufficient ${this.tokenService.payToken} balance`;
+          } else {
+            this.isDisableSwapButton = false;
+            return "Swap";
+          }
+        },
+      },
+      created() {
+        Vue.use(CustomToast);
+      },
+      mounted: function () {
+        this.getPrices();
+        this.connect();
+      },
+    });
+  </script>
+</html>
